@@ -8,6 +8,8 @@
 #include <syncstream>
 #include <chrono>
 
+struct task_t { void operator()(); };
+
 struct th_pool_t {
   using f_t = std::function< void(void) >;
   explicit th_pool_t(unsigned int k);
@@ -26,3 +28,12 @@ private:
   std::vector< std::thread > ths_;
 };
 
+void th_pool_t::submit(f_t f) {
+  mx_.lock(); tasks_.push(std::move(f)); mx_.unlock();
+  cd_.notify_one();
+}
+
+void th_pool_t::wait() {
+  std::unique_lock lck(mx_);
+  idle_.wait(lck, [&]() { return tasks_.empty() && !busy_; });
+}
