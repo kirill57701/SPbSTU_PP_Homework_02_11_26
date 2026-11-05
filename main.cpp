@@ -78,3 +78,12 @@ void task_t::operator()() {
   std::this_thread::sleep_for(200ms);
   std::osyncstream(std::cout) << "!\n";
 }
+
+int main() {
+  th_pool_t pool(5);
+  for (size_t i = 0; i < 10; ++i) pool.submit(task_t{});
+  pool.wait();
+  std::osyncstream(std::cout) << "---\n";
+  for (size_t i = 0; i < 10; ++i) pool.submit(task_t{});
+  pool.cancel();
+}
