@@ -37,3 +37,44 @@ void th_pool_t::wait() {
   std::unique_lock lck(mx_);
   idle_.wait(lck, [&]() { return tasks_.empty() && !busy_; });
 }
+
+void th_pool_t::cancel() {
+  mx_.lock(); tasks_ = {}; stop_ = true; mx_.unlock();
+  cd_.notify_all();
+  idle_.notify_all();
+}
+
+th_pool_t::th_pool_t(unsigned int k) {
+  auto thf = [this]() { execute(); };
+  for (; k; --k) ths_.emplace_back(thf);
+}
+
+th_pool_t::~th_pool_t() {
+  mx_.lock(); stop_ = true; mx_.unlock();
+  cd_.notify_all();
+  for (auto && th: ths_) th.join();
+}
+
+void th_pool_t::execute() {
+  std::unique_lock lck(mx_);
+  do {
+    auto proceed = [&]() {
+      return !tasks_.empty() || stop_;
+    };
+    cd_.wait(lck, proceed);
+    if (tasks_.empty()) continue;
+    auto task = std::move(tasks_.front());
+    tasks_.pop();
+    ++busy_;
+    lck.unlock();
+    try { task(); } catch (...) {}
+    lck.lock();
+    if (!--busy_ && tasks_.empty()) idle_.notify_all();
+  } while (!stop_ || !tasks_.empty());
+}
+
+void task_t::operator()() {
+  using namespace std::chrono_literals;
+  std::this_thread::sleep_for(200ms);
+  std::osyncstream(std::cout) << "!\n";
+}
